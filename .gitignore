@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Project-specific output (do not commit user data)
+data/
+output/
+*.xlsx
+*.csv
+
+# Secrets — never commit credentials
+mapping.yaml
+.streamlit/secrets.toml
+*.env
