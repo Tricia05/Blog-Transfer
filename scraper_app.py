@@ -155,15 +155,20 @@ section[data-testid="stSidebar"] .nav-active .stButton > button {
 [data-testid="stDecoration"] { display: none !important; }
 header[data-testid="stHeader"] { background: transparent; }
 
-/* Hide Streamlit Cloud's bottom-right host badge / Manage app button */
+/* Hide Streamlit Cloud's bottom-right host badge / Manage app button.
+   These selectors cover several Streamlit versions. */
 .viewerBadge_container__1QSob,
 [class*="viewerBadge_container"],
 [class*="profileContainer"],
 [class*="styles_terminalButton"],
 [data-testid="stToolbarAvatar"],
 [data-testid="stHostingMenu"],
-[data-testid="stAppDeployButton"] { display: none !important; }
-footer { visibility: hidden !important; }
+[data-testid="stAppDeployButton"],
+[data-testid="manage-app-button"],
+[data-testid="stStreamlitLogo"],
+iframe[title*="Manage app"],
+iframe[src*="share.streamlit.io"] { display: none !important; }
+footer { visibility: hidden !important; display: none !important; }
 
 /* Move any toast notifications below the topbar buttons */
 div[data-testid="stToastContainer"],
@@ -173,6 +178,33 @@ div[data-testid="stToastContainer"],
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+# JS to repeatedly hide Streamlit Cloud's injected branding (added late,
+# sometimes after our CSS, sometimes inside shadow DOM)
+st.markdown(
+    """
+    <script>
+    (function hideStreamlitBranding() {
+        const selectors = [
+            '[data-testid="stToolbarAvatar"]',
+            '[data-testid="stHostingMenu"]',
+            '[data-testid="stAppDeployButton"]',
+            '[data-testid="manage-app-button"]',
+            'iframe[title*="Manage app"]',
+            'iframe[src*="share.streamlit.io"]',
+            '[class*="viewerBadge_container"]',
+            '[class*="profileContainer"]',
+        ];
+        const kill = () => selectors.forEach(s =>
+            document.querySelectorAll(s).forEach(el => el.remove())
+        );
+        kill();
+        new MutationObserver(kill).observe(document.body, {childList:true, subtree:true});
+    })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
