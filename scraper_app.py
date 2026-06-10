@@ -164,6 +164,12 @@ header[data-testid="stHeader"] { background: transparent; }
 [class*="_link_gzau3_"] { display: none !important; }
 footer { visibility: hidden !important; display: none !important; }
 
+/* Defensive: hide any third-party chat widgets that might inject themselves */
+iframe[src*="crisp"],
+iframe[src*="tawk"],
+.intercom-lightweight-app,
+#crisp-chatbox { display: none !important; }
+
 /* Move any toast notifications below the topbar buttons */
 div[data-testid="stToastContainer"],
 [data-testid="stToast"] {
