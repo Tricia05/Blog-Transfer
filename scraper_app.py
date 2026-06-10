@@ -185,19 +185,44 @@ st.markdown(
     """
     <script>
     (function hideStreamlitBranding() {
-        const selectors = [
+        const cssSelectors = [
             '[data-testid="stToolbarAvatar"]',
             '[data-testid="stHostingMenu"]',
             '[data-testid="stAppDeployButton"]',
             '[data-testid="manage-app-button"]',
+            '[data-testid="stCloudBranding"]',
+            '[data-testid="stStreamlitBranding"]',
             'iframe[title*="Manage app"]',
             'iframe[src*="share.streamlit.io"]',
             '[class*="viewerBadge_container"]',
             '[class*="profileContainer"]',
         ];
-        const kill = () => selectors.forEach(s =>
-            document.querySelectorAll(s).forEach(el => el.remove())
-        );
+        const textSnippets = [
+            "Hosted with Streamlit",
+            "Created by",
+            "Made with Streamlit",
+        ];
+        const killBySelector = () =>
+            cssSelectors.forEach(s =>
+                document.querySelectorAll(s).forEach(el => el.remove())
+            );
+        const killByText = () => {
+            document.querySelectorAll("a, span, div, p, button").forEach(el => {
+                const txt = (el.textContent || "").trim();
+                if (txt && textSnippets.some(t => txt.includes(t)) && txt.length < 60) {
+                    // remove the outermost positioned ancestor if there is one
+                    let target = el;
+                    let parent = el.parentElement;
+                    while (parent && parent !== document.body) {
+                        const pos = getComputedStyle(parent).position;
+                        if (pos === "fixed" || pos === "absolute") target = parent;
+                        parent = parent.parentElement;
+                    }
+                    target.remove();
+                }
+            });
+        };
+        const kill = () => { killBySelector(); killByText(); };
         kill();
         new MutationObserver(kill).observe(document.body, {childList:true, subtree:true});
     })();
