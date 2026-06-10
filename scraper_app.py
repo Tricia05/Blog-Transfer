@@ -155,6 +155,16 @@ section[data-testid="stSidebar"] .nav-active .stButton > button {
 [data-testid="stDecoration"] { display: none !important; }
 header[data-testid="stHeader"] { background: transparent; }
 
+/* Hide Streamlit Cloud's bottom-right host badge / Manage app button */
+.viewerBadge_container__1QSob,
+[class*="viewerBadge_container"],
+[class*="profileContainer"],
+[class*="styles_terminalButton"],
+[data-testid="stToolbarAvatar"],
+[data-testid="stHostingMenu"],
+[data-testid="stAppDeployButton"] { display: none !important; }
+footer { visibility: hidden !important; }
+
 /* Move any toast notifications below the topbar buttons */
 div[data-testid="stToastContainer"],
 [data-testid="stToast"] {
