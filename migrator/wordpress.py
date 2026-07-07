@@ -135,6 +135,43 @@ class WordPressClient:
 
     # ---- high-level migration -----------------------------------------
 
+    def sideload_content_images(self, html: str) -> tuple[str, int, int]:
+        """Find every <img src="..."> in HTML, upload each to WP media, and
+        rewrite the src to the hosted URL.
+
+        Returns (rewritten_html, count_ok, count_failed).
+        """
+        if not html or "<img" not in html:
+            return html, 0, 0
+        from bs4 import BeautifulSoup  # local import to keep top of file clean
+        soup = BeautifulSoup(html, "html.parser")
+        ok = fail = 0
+        seen: dict[str, str] = {}   # source_url -> new_url (avoid re-uploading)
+        for img in soup.find_all("img"):
+            src = (img.get("src") or "").strip()
+            if not src or src.startswith("data:"):
+                continue
+            if src in seen:
+                img["src"] = seen[src]
+                continue
+            media_id, err = self.sideload_image(src)
+            if not media_id:
+                fail += 1
+                continue
+            # Fetch the new URL for the uploaded media
+            try:
+                media = self._request("GET", f"media/{media_id}")
+                new_url = media.get("source_url", "")
+            except WordPressError:
+                new_url = ""
+            if new_url:
+                img["src"] = new_url
+                seen[src] = new_url
+                ok += 1
+            else:
+                fail += 1
+        return str(soup), ok, fail
+
     def upload_post(self, payload: dict, on_duplicate: str = "skip") -> dict:
         """Upload one mapped payload.
 
@@ -144,11 +181,20 @@ class WordPressClient:
         cats = payload.pop("_categories", [])
         tags = payload.pop("_tags", [])
         featured_url = payload.pop("_featured_image_url", None)
+        sideload_content = payload.pop("_sideload_content_images", True)
 
         if cats:
             payload["categories"] = self.resolve_categories(cats)
         if tags:
             payload["tags"] = self.resolve_tags(tags)
+
+        # Sideload inline images inside the content so nothing is hotlinked
+        content_note = ""
+        if sideload_content and payload.get("content"):
+            new_html, ok, fail = self.sideload_content_images(payload["content"])
+            payload["content"] = new_html
+            if ok or fail:
+                content_note = f"content images: {ok} ok, {fail} failed"
 
         featured_note = ""
         if featured_url:
@@ -157,6 +203,10 @@ class WordPressClient:
                 payload["featured_media"] = media_id
             else:
                 featured_note = f"featured image skipped ({err})"
+
+        # Combine both notes into the returned note
+        note_bits = [n for n in (featured_note, content_note) if n]
+        featured_note = " | ".join(note_bits)
 
         slug = payload.get("slug")
         if slug:

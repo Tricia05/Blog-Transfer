@@ -493,6 +493,16 @@ def render_deploy_dialog() -> None:
             "If a post with the same slug already exists",
             ["skip", "update", "create"], index=0,
         )
+        sideload_images = st.checkbox(
+            "Re-host images to this WordPress site (recommended)",
+            value=True,
+            help=(
+                "Downloads every image in the post content + the featured image "
+                "and uploads them to this site's media library, so they never break "
+                "if the source site blocks hotlinking or goes offline. Slower "
+                "(each image is a separate upload). Uncheck for a quick test run."
+            ),
+        )
 
         c1, c2, c3 = st.columns([1, 1, 4])
         deploy_now = c1.button("Deploy now", type="primary", use_container_width=True)
@@ -546,10 +556,13 @@ def render_deploy_dialog() -> None:
                         iso = dt.strftime("%Y-%m-%dT%H:%M:%S")
                         payload["date"] = iso
                         payload["date_gmt"] = iso
-                # Featured image
+                # Featured image (only if re-hosting is enabled — WordPress
+                # can't use an external URL as a featured image)
                 fi = str(row.get("blog_featured_image", "")).strip()
-                if fi:
+                if fi and sideload_images:
                     payload["_featured_image_url"] = fi
+                # Whether to re-host inline content images
+                payload["_sideload_content_images"] = sideload_images
 
                 title = payload["title"] or row.get("Permalink", "")
                 date_sent = payload.get("date", "(no date)")

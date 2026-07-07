@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: blog-importer
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run scraper_app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false --server.enableWebsocketCompression=false --browser.gatherUsageStats=false"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
