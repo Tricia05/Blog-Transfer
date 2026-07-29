@@ -448,11 +448,15 @@ def render_importer() -> None:
         # Show which URLs were skipped (dead links / no content)
         skipped_urls = state.progress.get("skipped_urls", [])
         if not state.is_running() and skipped_urls:
-            with st.expander(f"⊘ {len(skipped_urls)} URLs skipped (dead links / no content)"):
+            with st.expander(
+                f"⊘ {len(skipped_urls)} URLs skipped (dead links / no content) — click to review",
+                expanded=True,
+            ):
                 st.caption(
                     "These sitemap URLs returned a 404 or had no readable content — "
                     "usually posts that were deleted or renamed on the source site. "
-                    "They are correctly excluded from your results."
+                    "They are correctly excluded from your results. "
+                    "Use 'Scan skipped URLs again' to retry any that failed transiently."
                 )
                 st.code("\n".join(skipped_urls), language="text")
                 sc1, sc2 = st.columns([1, 1])
