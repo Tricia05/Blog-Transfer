@@ -69,6 +69,28 @@ def _slug_from_permalink(url: str) -> str:
     return _re.sub(r"\.(php|html?|aspx)$", "", last, flags=_re.I)
 
 
+def _export_basename(source_url: str, df: pd.DataFrame) -> str:
+    """Build an export filename from the scanned site's domain.
+
+    e.g. 'https://www.americanreliablewindows.com/blog/' -> 'americanreliablewindows.com'
+    Falls back to the domain of the first Permalink, then 'blog_posts'.
+    """
+    from urllib.parse import urlparse
+    import re as _re
+
+    def domain_of(u: str) -> str:
+        host = urlparse(str(u)).netloc.lower()
+        return host[4:] if host.startswith("www.") else host
+
+    host = domain_of(source_url)
+    if not host and "Permalink" in df.columns and len(df):
+        host = domain_of(df["Permalink"].iloc[0])
+    if not host:
+        return "blog_posts"
+    # Safe for filenames
+    return _re.sub(r"[^a-z0-9.\-]", "_", host)
+
+
 def build_xlsx(df: pd.DataFrame) -> bytes:
     """Write the dataframe to XLSX with a real Excel date+time cell.
 
@@ -514,24 +536,26 @@ def render_importer() -> None:
         )
         st.session_state.df = edited
 
+        fname = _export_basename(st.session_state.last_url, edited)
+
         e1, e2, e3 = st.columns([1, 1, 5])
         csv_bytes = edited.to_csv(index=False).encode("utf-8-sig")
         if e1.download_button(
             "⬇  Export CSV", data=csv_bytes,
-            file_name="blog_posts.csv", mime="text/csv",
+            file_name=f"{fname}.csv", mime="text/csv",
             use_container_width=True, key="dl_csv",
         ):
-            storage.save_export("blog_posts", csv_bytes, "csv")
+            storage.save_export(fname, csv_bytes, "csv")
 
         xlsx_bytes = build_xlsx(edited)
         if e2.download_button(
             "⬇  Export XLSX", data=xlsx_bytes,
-            file_name="blog_posts.xlsx",
+            file_name=f"{fname}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True, key="dl_xlsx",
         ):
-            storage.save_export("blog_posts", xlsx_bytes, "xlsx")
-        e3.caption(f"{len(edited)} rows ready for export. Files are also saved to **Exports**.")
+            storage.save_export(fname, xlsx_bytes, "xlsx")
+        e3.caption(f"{len(edited)} rows • exports as **{fname}**. Also saved to **Exports**.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
