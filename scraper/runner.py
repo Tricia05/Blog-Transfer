@@ -31,6 +31,9 @@ class ScanState:
         "phase": "idle",     # idle | discovering | extracting | done | stopped
         "found": 0,
         "done": 0,
+        "extracted": 0,      # posts successfully pulled
+        "skipped": 0,        # URLs that 404'd / had no content
+        "skipped_urls": [],  # the dead URLs, for the report
         "current_url": "",
         "message": "",
     })
@@ -101,10 +104,14 @@ def _worker(
             break
 
         data = extract_post(u, fetcher)
-        if data:
+        if data and (data.get("blog_content") or data.get("Title")):
             data["ID"] = i
             data["blog_status"] = statuses[(i - 1) % len(statuses)]
             rows.append(data)
+            state.progress["extracted"] = len(rows)
+        else:
+            state.progress["skipped"] += 1
+            state.progress["skipped_urls"].append(u)
 
         state.progress["done"] = i
         state.progress["current_url"] = u
@@ -120,11 +127,17 @@ def _worker(
     df["ID"] = range(1, len(df) + 1)
     state.result_df = df
 
+    ex = state.progress["extracted"]
+    sk = state.progress["skipped"]
+    summary = f"{ex} posts extracted"
+    if sk:
+        summary += f", {sk} skipped (dead links / no content)"
     if state.stop_event.is_set():
         state.progress["phase"] = "stopped"
+        state.progress["message"] = f"Stopped — {summary}."
     else:
         state.progress["phase"] = "done"
-        state.progress["message"] = "Done."
+        state.progress["message"] = f"Done — {summary}."
 
 
 def start_scan(start_url: str, limit: int, statuses: list[str]) -> ScanState:

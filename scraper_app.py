@@ -285,6 +285,8 @@ def render_progress_card(state: ScanState) -> None:
     p = state.progress
     found = p.get("found", 0)
     done = p.get("done", 0)
+    extracted = p.get("extracted", 0)
+    skipped = p.get("skipped", 0)
     pct = int(done / found * 100) if found else 0
     phase = p.get("phase", "idle")
     msg = p.get("message", "")
@@ -293,6 +295,10 @@ def render_progress_card(state: ScanState) -> None:
         '<span style="background:#3A2C12;color:#F5B14E;padding:.2rem .55rem;'
         'border-radius:6px;font-size:.78rem;margin-left:.5rem;">PAUSED</span>'
         if state.is_paused() else ""
+    )
+    counts = (
+        f'<span style="color:#3DDC97;">✓ {extracted} extracted</span>'
+        f' &nbsp;&nbsp; <span style="color:#F5B14E;">⊘ {skipped} skipped</span>'
     )
     st.markdown(
         f"""<div class="step-card">
@@ -310,7 +316,8 @@ def render_progress_card(state: ScanState) -> None:
                     <div style="font-size:1.15rem; font-weight:600; margin-bottom:.4rem;">
                         Found {found} post URLs
                     </div>
-                    <div style="color:#8A93A6; font-size:.9rem; margin-bottom:.6rem; word-break:break-all;">
+                    <div style="font-size:.9rem; margin-bottom:.6rem;">{counts}</div>
+                    <div style="color:#8A93A6; font-size:.82rem; margin-bottom:.6rem; word-break:break-all;">
                         {done}/{found} &nbsp;•&nbsp; {cur}
                     </div>
                     <div style="background:#1E2330; border-radius:6px; height:8px; overflow:hidden;">
@@ -405,6 +412,17 @@ def render_importer() -> None:
                 )
                 st.success(f"Scan complete — saved to history: {entry.id} ({len(state.result_df)} posts)")
             st.session_state.scan_persisted = True
+
+        # Show which URLs were skipped (dead links / no content)
+        skipped_urls = state.progress.get("skipped_urls", [])
+        if not state.is_running() and skipped_urls:
+            with st.expander(f"⊘ {len(skipped_urls)} URLs skipped (dead links / no content)"):
+                st.caption(
+                    "These sitemap URLs returned a 404 or had no readable content — "
+                    "usually posts that were deleted or renamed on the source site. "
+                    "They are correctly excluded from your results."
+                )
+                st.code("\n".join(skipped_urls), language="text")
 
         # Auto-refresh while running so the progress card updates
         if state.is_running():
