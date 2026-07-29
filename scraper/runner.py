@@ -70,17 +70,25 @@ def _worker(
     start_url: str,
     limit: int,
     statuses: list[str],
+    explicit_urls: list[str] | None = None,
 ) -> None:
     fetcher = Fetcher()
-    state.progress["phase"] = "discovering"
-    state.progress["message"] = "Discovering and gathering post URLs..."
 
-    try:
-        post_urls = discover_posts(start_url, limit or None, fetcher)
-    except Exception as e:
-        state.progress["phase"] = "stopped"
-        state.progress["message"] = f"Discovery failed: {e}"
-        return
+    if explicit_urls is not None:
+        # Re-scan a specific set of URLs (e.g. previously skipped ones) —
+        # no discovery step.
+        post_urls = list(explicit_urls)
+        state.progress["phase"] = "extracting"
+        state.progress["message"] = f"Re-scanning {len(post_urls)} URLs..."
+    else:
+        state.progress["phase"] = "discovering"
+        state.progress["message"] = "Discovering and gathering post URLs..."
+        try:
+            post_urls = discover_posts(start_url, limit or None, fetcher)
+        except Exception as e:
+            state.progress["phase"] = "stopped"
+            state.progress["message"] = f"Discovery failed: {e}"
+            return
 
     if not post_urls:
         state.progress["phase"] = "stopped"
@@ -140,10 +148,17 @@ def _worker(
         state.progress["message"] = f"Done — {summary}."
 
 
-def start_scan(start_url: str, limit: int, statuses: list[str]) -> ScanState:
+def start_scan(
+    start_url: str,
+    limit: int,
+    statuses: list[str],
+    explicit_urls: list[str] | None = None,
+) -> ScanState:
     state = ScanState()
     t = threading.Thread(
-        target=_worker, args=(state, start_url, limit, statuses), daemon=True,
+        target=_worker,
+        args=(state, start_url, limit, statuses, explicit_urls),
+        daemon=True,
     )
     state.thread = t
     t.start()

@@ -36,13 +36,30 @@ def _normalize(url: str) -> str:
     return url.rstrip("/")
 
 
+# Nested sitemaps we should NOT follow — they hold pages, taxonomy archives,
+# media, and other non-post content that would pollute the results.
+NON_POST_SITEMAP = re.compile(
+    r"(page|categor|tag|author|product|attachment|media|"
+    r"local|team|portfolio|project|service)[-_]?sitemap",
+    re.I,
+)
+# Nested sitemaps that clearly hold posts.
+POST_SITEMAP = re.compile(r"(post|article|blog)[-_]?sitemap|sitemap[-_]?post", re.I)
+
+
 def from_sitemap(base_url: str, fetcher: Fetcher) -> list[str]:
-    """Try common WordPress sitemap locations and collect post URLs."""
+    """Collect post URLs from the site's sitemap(s).
+
+    Only follows nested sitemaps that look like POST sitemaps; skips
+    page/category/tag/author/media sitemaps so service pages and archive
+    pages don't get scraped as if they were blog posts.
+    """
     found: set[str] = set()
     base_root = f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}"
 
     queue = [urljoin(base_root, p) for p in SITEMAP_CANDIDATES]
     seen_sitemaps: set[str] = set()
+    followed_child = False  # did we follow at least one post-specific child?
 
     while queue:
         sm = queue.pop(0)
@@ -57,13 +74,24 @@ def from_sitemap(base_url: str, fetcher: Fetcher) -> list[str]:
         except ET.ParseError:
             continue
         ns = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
-        # Sitemap index -> nested sitemaps
-        for s in root.findall(f"{ns}sitemap/{ns}loc"):
-            if s.text and "post" in s.text.lower():
-                queue.append(s.text)
-            elif s.text and "sitemap" in s.text.lower():
-                queue.append(s.text)
-        # URL set
+
+        children = [s.text for s in root.findall(f"{ns}sitemap/{ns}loc") if s.text]
+        if children:
+            # This is a sitemap index. Follow post sitemaps; skip the rest.
+            for child in children:
+                if NON_POST_SITEMAP.search(child):
+                    continue
+                if POST_SITEMAP.search(child):
+                    queue.append(child)
+                    followed_child = True
+            # If nothing matched a post sitemap, fall back to following any
+            # child that isn't an obvious non-post one (best effort).
+            if not followed_child:
+                for child in children:
+                    if not NON_POST_SITEMAP.search(child):
+                        queue.append(child)
+
+        # URL set (actual post URLs)
         for u in root.findall(f"{ns}url/{ns}loc"):
             if u.text and _same_host(base_url, u.text):
                 found.add(_normalize(u.text))

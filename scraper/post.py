@@ -218,6 +218,11 @@ def _extract_terms(soup: BeautifulSoup, kind: str) -> str:
             if text and text not in seen:
                 seen.add(text); names.append(text)
 
+    # Drop WordPress's default "Uncategorized" bucket when a real
+    # category is also present (keep it only if it's the sole one).
+    if kind == "category" and len(names) > 1:
+        names = [n for n in names if n.strip().lower() != "uncategorized"]
+
     return ", ".join(names)
 
 
@@ -339,15 +344,28 @@ def _slug_from_url(url: str) -> str:
 def extract_post(url: str, fetcher: Fetcher) -> dict | None:
     """Fetch a post URL and return a dict of extracted fields, or None on failure.
 
-    Some WordPress sites 404 on the non-trailing-slash form of a permalink,
-    so if the first fetch fails we retry with the slash toggled.
+    Two guards keep dead posts out of the results:
+      1. If the non-trailing-slash form fails, retry with the slash toggled
+         (some WordPress sites 404 on one form but serve the other).
+      2. If the request lands on a DIFFERENT slug than requested (a soft-404
+         redirect to a category/home fallback), treat the post as gone and
+         skip it — otherwise the fallback page would be scraped as if it were
+         the missing post.
     """
+    requested_slug = _slug_from_url(url)
+
     r = fetcher.get(url)
     if not r:
         alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
         r = fetcher.get(alt)
     if not r:
         return None
+
+    # Soft-404 guard: did we get redirected somewhere else entirely?
+    final_slug = _slug_from_url(str(r.url))
+    if requested_slug and final_slug and requested_slug != final_slug:
+        return None
+
     soup = BeautifulSoup(r.text, "lxml")
 
     permalink = _extract_permalink(soup, fallback=str(r.url))
