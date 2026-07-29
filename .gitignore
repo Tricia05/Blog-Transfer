@@ -27,3 +27,6 @@ output/
 mapping.yaml
 .streamlit/secrets.toml
 *.env
+
+# Temp / scratch scripts
+_*.py
