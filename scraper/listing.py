@@ -115,43 +115,60 @@ def from_listing(base_url: str, fetcher: Fetcher, max_pages: int = 500) -> list[
     return sorted(found)
 
 
+def _apply_prefix(posts: list[str], parsed) -> list[str]:
+    """Keep only URLs under the listing URL's path prefix (e.g. /blog/)."""
+    prefix = parsed.path.rstrip("/")
+    if not prefix:
+        return posts
+    prefix_full = f"{parsed.scheme}://{parsed.netloc}{prefix}/".rstrip("/")
+    return [p for p in posts if p.startswith(prefix_full)]
+
+
 def discover_posts(start_url: str, limit: int | None, fetcher: Fetcher) -> list[str]:
     """Discover post URLs starting from a blog or site URL.
 
-    Strategy: try sitemap first (fast + comprehensive), fall back to crawling
-    the listing page and its pagination. If the input URL has a path prefix
-    (e.g. '/blog/'), only keep URLs under that prefix.
+    Strategy: try the sitemap first (fast + comprehensive), fall back to
+    crawling the listing page and its pagination.
+
+    The listing URL's path prefix (e.g. '/blog/') is used as a *soft* filter:
+    it's applied only if it still leaves posts. Many WordPress sites list
+    posts at '/blog/' but give the posts themselves root-level permalinks
+    ('/post-name/'), so a hard prefix filter would wrongly discard everything.
     """
-    posts = from_sitemap(start_url, fetcher)
-
-    # If the user pointed at a sub-path like /blog/, restrict to that prefix
     parsed = urlparse(start_url)
-    prefix = parsed.path.rstrip("/")
-    if prefix and prefix != "":
-        prefix_full = f"{parsed.scheme}://{parsed.netloc}{prefix}/"
-        posts = [p for p in posts if p.startswith(prefix_full.rstrip("/"))]
-
-    # Fall back to crawling the listing page if sitemap had nothing useful.
-    # Estimate enough pagination to cover the requested limit (most blogs
-    # show ~10 posts per listing page; we add headroom).
-    if not posts:
-        max_pages = 500 if not limit else max(20, (limit // 5) + 5)
-        posts = from_listing(start_url, fetcher, max_pages=max_pages)
-        if prefix:
-            prefix_full = f"{parsed.scheme}://{parsed.netloc}{prefix}/"
-            posts = [p for p in posts if p.startswith(prefix_full.rstrip("/"))]
-
-    # Filter out obvious non-post URLs
-    posts = [p for p in posts if not NON_POST_HINTS.search(p)]
-
-    # Drop the bare site root and listing root
     base_root = _normalize(f"{parsed.scheme}://{parsed.netloc}")
     listing_root = _normalize(start_url)
-    posts = [p for p in posts if p not in (base_root, listing_root)]
 
-    # Drop static page extensions (.php/.html/.aspx) — likely site pages, not posts
-    posts = [p for p in posts if not re.search(r"\.(php|html?|aspx)$", p, re.I)]
+    def cleanup(urls: list[str]) -> list[str]:
+        out = []
+        for p in urls:
+            if NON_POST_HINTS.search(p):
+                continue
+            if re.search(r"/\d{4}(/\d{2})?/?$", p):      # date archives /2024/ /2024/07/
+                continue
+            if p in (base_root, listing_root):            # site root / listing root
+                continue
+            if re.search(r"\.(php|html?|aspx)$", p, re.I): # static pages
+                continue
+            out.append(p)
+        return out
 
+    # 1. Sitemap (fast + comprehensive)
+    posts = cleanup(from_sitemap(start_url, fetcher))
+
+    # 2. Fall back to crawling the listing page if the sitemap had nothing
+    if not posts:
+        max_pages = 500 if not limit else max(20, (limit // 5) + 5)
+        posts = cleanup(from_listing(start_url, fetcher, max_pages=max_pages))
+
+    # 3. Soft path-prefix filter: apply only if it still leaves posts.
+    #    (Many sites list at /blog/ but give posts root-level permalinks, so a
+    #    hard filter would wrongly discard everything.)
+    filtered = _apply_prefix(posts, parsed)
+    if filtered:
+        posts = filtered
+
+    posts = sorted(set(posts))
     if limit:
         posts = posts[:limit]
     return posts

@@ -13,7 +13,7 @@ from .post import extract_post
 
 
 COLUMNS = [
-    "ID", "Title", "Permalink",
+    "ID", "Title", "Permalink", "blog_slug",
     "blog_dates",
     "blog_Category", "blog_Tag",
     "blog_featured_image", "blog_content",

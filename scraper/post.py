@@ -74,25 +74,29 @@ GENERIC_H1 = {
 }
 
 
+def _strip_site_suffix(title: str) -> str:
+    """Remove a trailing ' | Site Name' / ' - Site Name' from a title."""
+    for sep in (" | ", " — ", " – ", " - "):
+        if sep in title:
+            return title.split(sep)[0].strip()
+    return title.strip()
+
+
 def _extract_title(soup: BeautifulSoup) -> str:
     """Pick the most specific post title available.
 
     Priority:
       1. og:title (set by SEO plugins; almost always the real post title)
-      2. <title> tag, with any " | Site Name" trailing portion stripped
+      2. <title> tag
       3. <h1>, unless it looks generic (e.g. just "Blog")
+    In all cases a trailing ' | Site Name' suffix is stripped.
     """
     og = _meta(soup, property="og:title")
     if og:
-        return og
+        return _strip_site_suffix(og)
 
     if soup.title and soup.title.string:
-        t = soup.title.string.strip()
-        # Strip common " | Site Name" / " - Site Name" trailers
-        for sep in (" | ", " - ", " — ", " – "):
-            if sep in t:
-                t = t.split(sep)[0].strip()
-                break
+        t = _strip_site_suffix(soup.title.string.strip())
         if t:
             return t
 
@@ -316,16 +320,42 @@ def _extract_content(soup: BeautifulSoup, base_url: str) -> str:
     return best_html
 
 
+def _slug_from_url(url: str) -> str:
+    """Extract just the post slug from a full permalink.
+
+    e.g. 'https://site.com/blog/burial-or-cremation-guide/' -> 'burial-or-cremation-guide'
+    Drops query strings, trailing slashes, and any '?p=123' fallbacks.
+    """
+    from urllib.parse import urlparse
+    path = urlparse(url).path.strip("/")
+    if not path:
+        return ""
+    last = path.split("/")[-1]
+    # Strip a trailing file extension if present (.php, .html, etc.)
+    last = re.sub(r"\.(php|html?|aspx)$", "", last, flags=re.I)
+    return last
+
+
 def extract_post(url: str, fetcher: Fetcher) -> dict | None:
-    """Fetch a post URL and return a dict of extracted fields, or None on failure."""
+    """Fetch a post URL and return a dict of extracted fields, or None on failure.
+
+    Some WordPress sites 404 on the non-trailing-slash form of a permalink,
+    so if the first fetch fails we retry with the slash toggled.
+    """
     r = fetcher.get(url)
+    if not r:
+        alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
+        r = fetcher.get(alt)
     if not r:
         return None
     soup = BeautifulSoup(r.text, "lxml")
 
+    permalink = _extract_permalink(soup, fallback=str(r.url))
+
     return {
         "Title": _extract_title(soup),
-        "Permalink": _extract_permalink(soup, fallback=str(r.url)),
+        "Permalink": permalink,
+        "blog_slug": _slug_from_url(permalink),
         "blog_dates": _extract_published(soup),
         "blog_Category": _extract_terms(soup, "category"),
         "blog_Tag": _extract_terms(soup, "tag"),

@@ -49,7 +49,24 @@ def _migrate_legacy_columns(df: pd.DataFrame) -> pd.DataFrame:
                 + df["blog_time"].fillna("").astype(str).str.strip()
             ).str.strip()
         df = df.drop(columns=["blog_time"])
+    # New: derive blog_slug from Permalink if the column is missing/empty
+    if "Permalink" in df.columns:
+        if "blog_slug" not in df.columns:
+            df["blog_slug"] = ""
+        need = df["blog_slug"].fillna("").astype(str).str.strip() == ""
+        df.loc[need, "blog_slug"] = df.loc[need, "Permalink"].apply(_slug_from_permalink)
     return df
+
+
+def _slug_from_permalink(url: str) -> str:
+    """Extract the trailing slug from a full permalink URL."""
+    from urllib.parse import urlparse
+    import re as _re
+    path = urlparse(str(url)).path.strip("/")
+    if not path:
+        return ""
+    last = path.split("/")[-1]
+    return _re.sub(r"\.(php|html?|aspx)$", "", last, flags=_re.I)
 
 
 def build_xlsx(df: pd.DataFrame) -> bytes:
@@ -433,6 +450,7 @@ def render_importer() -> None:
                 "ID": st.column_config.NumberColumn("ID", width="small"),
                 "Title": st.column_config.TextColumn("Title", width="medium"),
                 "Permalink": st.column_config.LinkColumn("Permalink"),
+                "blog_slug": st.column_config.TextColumn("blog_slug", help="URL slug"),
                 "blog_dates": st.column_config.TextColumn(
                     "blog_dates", help="Month D, YYYY H:MM AM/PM",
                 ),
@@ -539,6 +557,9 @@ def render_deploy_dialog() -> None:
                     "_categories": [c.strip() for c in str(row.get("blog_Category", "")).split(",") if c.strip()],
                     "_tags": [t.strip() for t in str(row.get("blog_Tag", "")).split(",") if t.strip()],
                 }
+                slug = str(row.get("blog_slug", "") or "").strip()
+                if slug:
+                    payload["slug"] = slug
                 # Yoast SEO meta (only sent if the source had a value)
                 meta = {}
                 if metadesc:
