@@ -445,39 +445,6 @@ def render_importer() -> None:
                     st.success(f"Scan complete — saved to history: {entry.id} ({len(new_df)} posts)")
             st.session_state.scan_persisted = True
 
-        # Show which URLs were skipped (dead links / no content)
-        skipped_urls = state.progress.get("skipped_urls", [])
-        if not state.is_running() and skipped_urls:
-            with st.expander(
-                f"⊘ {len(skipped_urls)} URLs skipped (dead links / no content) — click to review",
-                expanded=True,
-            ):
-                st.caption(
-                    "These sitemap URLs returned a 404 or had no readable content — "
-                    "usually posts that were deleted or renamed on the source site. "
-                    "They are correctly excluded from your results. "
-                    "Use 'Scan skipped URLs again' to retry any that failed transiently."
-                )
-                st.code("\n".join(skipped_urls), language="text")
-                sc1, sc2 = st.columns([1, 1])
-                sc1.download_button(
-                    "⬇  Download skipped URLs",
-                    data=("\n".join(skipped_urls)).encode("utf-8"),
-                    file_name="skipped_urls.txt",
-                    mime="text/plain",
-                    key="dl_skipped",
-                    use_container_width=True,
-                )
-                if sc2.button("🔁  Scan skipped URLs again", key="rescan_skipped",
-                              use_container_width=True):
-                    st.session_state.append_to_df = True
-                    st.session_state.scan_persisted = False
-                    st.session_state.scan_state = start_scan(
-                        st.session_state.last_url, 0, default_status,
-                        explicit_urls=list(skipped_urls),
-                    )
-                    st.rerun()
-
         # Auto-refresh while running so the progress card updates
         if state.is_running():
             time.sleep(0.6)
