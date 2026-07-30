@@ -159,7 +159,12 @@ def _apply_prefix(posts: list[str], parsed) -> list[str]:
     return [p for p in posts if p.startswith(prefix_full)]
 
 
-def discover_posts(start_url: str, limit: int | None, fetcher: Fetcher) -> list[str]:
+def discover_posts(
+    start_url: str,
+    limit: int | None,
+    fetcher: Fetcher,
+    on_progress=None,
+) -> list[str]:
     """Discover post URLs starting from a blog or site URL.
 
     Strategy: try the sitemap first (fast + comprehensive), fall back to
@@ -169,7 +174,17 @@ def discover_posts(start_url: str, limit: int | None, fetcher: Fetcher) -> list[
     it's applied only if it still leaves posts. Many WordPress sites list
     posts at '/blog/' but give the posts themselves root-level permalinks
     ('/post-name/'), so a hard prefix filter would wrongly discard everything.
+
+    on_progress(message) is called with short status strings so callers can
+    surface live feedback during the (otherwise silent) discovery phase.
     """
+    def report(msg: str) -> None:
+        if on_progress:
+            try:
+                on_progress(msg)
+            except Exception:
+                pass
+
     parsed = urlparse(start_url)
     base_root = _normalize(f"{parsed.scheme}://{parsed.netloc}")
     listing_root = _normalize(start_url)
@@ -189,12 +204,16 @@ def discover_posts(start_url: str, limit: int | None, fetcher: Fetcher) -> list[
         return out
 
     # 1. Sitemap (fast + comprehensive)
+    report("Reading sitemap...")
     posts = cleanup(from_sitemap(start_url, fetcher))
+    report(f"Sitemap: {len(posts)} candidate URLs")
 
     # 2. Fall back to crawling the listing page if the sitemap had nothing
     if not posts:
+        report("No sitemap posts — crawling the blog listing...")
         max_pages = 500 if not limit else max(20, (limit // 5) + 5)
         posts = cleanup(from_listing(start_url, fetcher, max_pages=max_pages))
+        report(f"Listing crawl: {len(posts)} candidate URLs")
 
     # 3. Soft path-prefix filter: apply only if it still leaves posts.
     #    (Many sites list at /blog/ but give posts root-level permalinks, so a
