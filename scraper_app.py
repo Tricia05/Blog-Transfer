@@ -309,7 +309,6 @@ def render_progress_card(state: ScanState) -> None:
     found = p.get("found", 0)
     done = p.get("done", 0)
     extracted = p.get("extracted", 0)
-    skipped = p.get("skipped", 0)
     pct = int(done / found * 100) if found else 0
     phase = p.get("phase", "idle")
     msg = p.get("message", "")
@@ -319,10 +318,7 @@ def render_progress_card(state: ScanState) -> None:
         'border-radius:6px;font-size:.78rem;margin-left:.5rem;">PAUSED</span>'
         if state.is_paused() else ""
     )
-    counts = (
-        f'<span style="color:#3DDC97;">✓ {extracted} extracted</span>'
-        f' &nbsp;&nbsp; <span style="color:#F5B14E;">⊘ {skipped} skipped</span>'
-    )
+    counts = f'<span style="color:#3DDC97;">✓ {extracted} extracted</span>'
     st.markdown(
         f"""<div class="step-card">
             <div class="step-title" style="margin-bottom:1rem;">

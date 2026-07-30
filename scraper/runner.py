@@ -146,10 +146,7 @@ def _worker(
     state.result_df = df
 
     ex = state.progress["extracted"]
-    sk = state.progress["skipped"]
     summary = f"{ex} posts extracted"
-    if sk:
-        summary += f", {sk} skipped (dead links / no content)"
     if state.stop_event.is_set():
         state.progress["phase"] = "stopped"
         state.progress["message"] = f"Stopped — {summary}."
