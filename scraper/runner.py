@@ -83,8 +83,11 @@ def _worker(
     else:
         state.progress["phase"] = "discovering"
         state.progress["message"] = "Discovering and gathering post URLs..."
+        # Sitemaps are small XML — use a snappier fetcher so discovery can't
+        # stall on slow candidate probes (important on low-CPU free hosting).
+        disco_fetcher = Fetcher(delay=0.25, timeout=12)
         try:
-            post_urls = discover_posts(start_url, limit or None, fetcher)
+            post_urls = discover_posts(start_url, limit or None, disco_fetcher)
         except Exception as e:
             state.progress["phase"] = "stopped"
             state.progress["message"] = f"Discovery failed: {e}"

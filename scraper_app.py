@@ -445,9 +445,10 @@ def render_importer() -> None:
                     st.success(f"Scan complete — saved to history: {entry.id} ({len(new_df)} posts)")
             st.session_state.scan_persisted = True
 
-        # Auto-refresh while running so the progress card updates
+        # Auto-refresh while running so the progress card updates. A longer
+        # interval leaves more CPU for the scan thread on low-CPU hosting.
         if state.is_running():
-            time.sleep(0.6)
+            time.sleep(1.5)
             st.rerun()
 
     # ---- Step 3: Preview Results ----

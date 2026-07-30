@@ -60,8 +60,9 @@ def from_sitemap(base_url: str, fetcher: Fetcher) -> list[str]:
     queue = [urljoin(base_root, p) for p in SITEMAP_CANDIDATES]
     seen_sitemaps: set[str] = set()
     followed_child = False  # did we follow at least one post-specific child?
+    MAX_SITEMAP_FETCHES = 25  # hard cap so a huge index can't stall discovery
 
-    while queue:
+    while queue and len(seen_sitemaps) < MAX_SITEMAP_FETCHES:
         sm = queue.pop(0)
         if sm in seen_sitemaps:
             continue
@@ -95,6 +96,12 @@ def from_sitemap(base_url: str, fetcher: Fetcher) -> list[str]:
         for u in root.findall(f"{ns}url/{ns}loc"):
             if u.text and _same_host(base_url, u.text):
                 found.add(_normalize(u.text))
+
+        # Early exit: once a post sitemap has given us URLs and there are no
+        # more nested sitemaps to follow, stop — no need to probe the other
+        # candidate URLs (they'd just be slow 404s/redirects).
+        if found and not queue:
+            break
 
     return sorted(found)
 
