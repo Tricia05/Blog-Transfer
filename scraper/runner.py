@@ -121,7 +121,17 @@ def _worker(
         if state.stop_event.is_set():
             break
 
-        data = extract_post(u, fetcher)
+        # Extract with a couple of retries so a transient network hiccup
+        # (common on low-CPU free hosting) doesn't silently drop a real post.
+        data = None
+        for attempt in range(3):
+            data = extract_post(u, fetcher)
+            if data and (data.get("blog_content") or data.get("Title")):
+                break
+            if state.stop_event.is_set():
+                break
+            threading.Event().wait(0.5 * (attempt + 1))  # small backoff
+
         if data and (data.get("blog_content") or data.get("Title")):
             data["ID"] = i
             data["blog_status"] = statuses[(i - 1) % len(statuses)]
