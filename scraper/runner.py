@@ -22,6 +22,31 @@ COLUMNS = [
 ]
 
 
+def _stub_row(url: str) -> dict:
+    """Build a minimal row for a URL that couldn't be extracted (404/dead).
+
+    Fills Permalink + slug + a humanized Title from the slug so the row is
+    still usable; content/date/etc. are left blank for manual completion.
+    """
+    from urllib.parse import urlparse
+    import re
+    slug = urlparse(url).path.strip("/").split("/")[-1]
+    slug = re.sub(r"\.(php|html?|aspx)$", "", slug, flags=re.I)
+    title = slug.replace("-", " ").replace("_", " ").strip().title()
+    return {
+        "Title": title,
+        "Permalink": url,
+        "blog_slug": slug,
+        "blog_dates": "",
+        "blog_Category": "",
+        "blog_Tag": "",
+        "blog_featured_image": "",
+        "blog_content": "",
+        "blog_metadesc": "",
+        "blog_metatitle": "",
+    }
+
+
 @dataclass
 class ScanState:
     """Mutable, thread-safe-enough state for one scan run."""
@@ -132,14 +157,17 @@ def _worker(
                 break
             threading.Event().wait(0.5 * (attempt + 1))  # small backoff
 
-        if data and (data.get("blog_content") or data.get("Title")):
-            data["ID"] = i
-            data["blog_status"] = statuses[(i - 1) % len(statuses)]
-            rows.append(data)
-            state.progress["extracted"] = len(rows)
-        else:
+        if not (data and (data.get("blog_content") or data.get("Title"))):
+            # Extraction failed (404 / dead / no content). Keep the URL as a
+            # row anyway so nothing is dropped — fill what we can from the URL.
+            data = _stub_row(u)
             state.progress["skipped"] += 1
             state.progress["skipped_urls"].append(u)
+
+        data["ID"] = i
+        data["blog_status"] = statuses[(i - 1) % len(statuses)]
+        rows.append(data)
+        state.progress["extracted"] = len(rows)
 
         state.progress["done"] = i
         state.progress["current_url"] = u
