@@ -344,34 +344,43 @@ def _slug_from_url(url: str) -> str:
     if not path:
         return ""
     last = path.split("/")[-1]
-    # Strip a trailing file extension if present (.php, .html, etc.)
+    # Strip only page extensions (.php/.html/.aspx). Image/media extensions
+    # are kept ON PURPOSE so a redirect to a .jpg won't match a post slug.
     last = re.sub(r"\.(php|html?|aspx)$", "", last, flags=re.I)
-    return last
+    return last.lower()
 
 
 def extract_post(url: str, fetcher: Fetcher) -> dict | None:
     """Fetch a post URL and return a dict of extracted fields, or None on failure.
 
-    Two guards keep dead posts out of the results:
-      1. If the non-trailing-slash form fails, retry with the slash toggled
-         (some WordPress sites 404 on one form but serve the other).
-      2. If the request lands on a DIFFERENT slug than requested (a soft-404
-         redirect to a category/home fallback), treat the post as gone and
-         skip it — otherwise the fallback page would be scraped as if it were
-         the missing post.
+    Robust fetch: WordPress permalink handling varies — some sites 404 on the
+    no-trailing-slash form, and some even redirect one form to the featured
+    IMAGE (an HTTP 200 to the wrong resource). So we try BOTH slash forms and
+    accept whichever actually resolves to the requested post slug. If neither
+    does, the post is treated as gone (returns None) rather than scraping a
+    fallback/image page as if it were the post.
     """
     requested_slug = _slug_from_url(url)
 
-    r = fetcher.get(url)
-    if not r:
-        alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
-        r = fetcher.get(alt)
-    if not r:
-        return None
+    # Try both slash forms; keep the response whose final URL matches our slug.
+    forms = [url]
+    forms.append(url.rstrip("/") if url.endswith("/") else url.rstrip("/") + "/")
 
-    # Soft-404 guard: did we get redirected somewhere else entirely?
-    final_slug = _slug_from_url(str(r.url))
-    if requested_slug and final_slug and requested_slug != final_slug:
+    r = None
+    for form in forms:
+        resp = fetcher.get(form)
+        if not resp:
+            continue
+        # Must be an HTML page, not a redirect to an image/PDF/etc.
+        ctype = resp.headers.get("content-type", "").lower()
+        if "html" not in ctype:
+            continue
+        final_slug = _slug_from_url(str(resp.url))
+        if not requested_slug or not final_slug or final_slug == requested_slug:
+            r = resp
+            break  # resolved to the right post
+
+    if not r:
         return None
 
     soup = BeautifulSoup(r.text, "lxml")
