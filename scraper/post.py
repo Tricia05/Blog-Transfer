@@ -386,6 +386,12 @@ def extract_post(url: str, fetcher: Fetcher) -> dict | None:
     soup = BeautifulSoup(r.text, "lxml")
 
     permalink = _extract_permalink(soup, fallback=str(r.url))
+    featured = _extract_featured_image(soup, str(r.url))
+    content = _extract_content(soup, str(r.url))
+    # The featured image is often ALSO embedded at the top of the content.
+    # Remove it so imported posts don't show the hero image twice (once as
+    # the WordPress featured image, once inline).
+    content = _remove_featured_from_content(content, featured)
 
     return {
         "Title": _extract_title(soup),
@@ -394,8 +400,47 @@ def extract_post(url: str, fetcher: Fetcher) -> dict | None:
         "blog_dates": _extract_published(soup),
         "blog_Category": _extract_terms(soup, "category"),
         "blog_Tag": _extract_terms(soup, "tag"),
-        "blog_featured_image": _extract_featured_image(soup, str(r.url)),
-        "blog_content": _extract_content(soup, str(r.url)),
+        "blog_featured_image": featured,
+        "blog_content": content,
         "blog_metadesc": _extract_meta_description(soup),
         "blog_metatitle": _extract_meta_title(soup),
     }
+
+
+def _image_key(url: str) -> str:
+    """Normalize an image URL to its base filename without WP size suffix.
+
+    e.g. '.../Choosing-Window-Placement-300x200.jpg' -> 'choosing-window-placement'
+    """
+    if not url:
+        return ""
+    name = url.rsplit("/", 1)[-1].split("?")[0]
+    name = re.sub(r"\.(jpe?g|png|gif|webp|svg)$", "", name, flags=re.I)
+    name = re.sub(r"-\d+x\d+$", "", name)  # strip WordPress -600x400 size suffix
+    return name.lower()
+
+
+def _remove_featured_from_content(html: str, featured_url: str) -> str:
+    """Remove <img> tags in the content that are the same as the featured image."""
+    if not html or not featured_url:
+        return html
+    key = _image_key(featured_url)
+    if not key:
+        return html
+
+    soup = BeautifulSoup(html, "html.parser")
+    removed = False
+    for img in soup.find_all("img"):
+        if _image_key(img.get("src", "")) == key:
+            # Remove the image, and its wrapper (figure/p/a) if that becomes empty
+            parent = img.parent
+            img.decompose()
+            removed = True
+            while parent is not None and parent.name in ("a", "figure", "p", "div", "span"):
+                if parent.find(True) is None and not (parent.get_text(strip=True)):
+                    nxt = parent.parent
+                    parent.decompose()
+                    parent = nxt
+                else:
+                    break
+    return soup.decode_contents().strip() if removed else html
