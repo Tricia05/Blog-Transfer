@@ -71,6 +71,12 @@ def _meta(soup: BeautifulSoup, **attrs) -> str:
 GENERIC_H1 = {
     "blog", "blogs", "articles", "article", "news", "posts", "post",
     "home", "homepage", "category",
+    # Bot-check / interstitial pages — never a real post title
+    "one moment, please...", "one moment, please",
+    "just a moment...", "just a moment",
+    "attention required!", "attention required",
+    "please wait...", "please wait", "access denied",
+    "are you human?", "verifying you are human",
 }
 
 
@@ -86,11 +92,19 @@ def _extract_title(soup: BeautifulSoup) -> str:
     """Pick the most specific post title available.
 
     Priority:
-      1. og:title (set by SEO plugins; almost always the real post title)
-      2. <title> tag
-      3. <h1>, unless it looks generic (e.g. just "Blog")
-    In all cases a trailing ' | Site Name' suffix is stripped.
+      1. <h1>, when it's a real title (not a generic page label like "Blog").
+         This matches the post title shown on the live site, whereas SEO
+         plugins often shorten/rewrite og:title and the <title> tag.
+      2. og:title (SEO plugin) — used when the H1 is generic/missing.
+      3. <title> tag.
+    A trailing ' | Site Name' suffix is stripped from the meta-based options.
     """
+    h1 = soup.find("h1")
+    if h1:
+        text = h1.get_text(strip=True)
+        if text and text.lower() not in GENERIC_H1:
+            return text
+
     og = _meta(soup, property="og:title")
     if og:
         return _strip_site_suffix(og)
@@ -99,12 +113,6 @@ def _extract_title(soup: BeautifulSoup) -> str:
         t = _strip_site_suffix(soup.title.string.strip())
         if t:
             return t
-
-    h1 = soup.find("h1")
-    if h1:
-        text = h1.get_text(strip=True)
-        if text and text.lower() not in GENERIC_H1:
-            return text
 
     return ""
 
